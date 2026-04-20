@@ -469,18 +469,92 @@
                         </Grid>
                     </Border>
 
-                    <!-- Inject Button -->
-                    <Button Grid.Row="6" x:Name="InjectBtn" Style="{StaticResource InjectButton}"
-                            Height="50" Click="InjectButton_Click" VerticalAlignment="Bottom">
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock x:Name="InjectSpinner" Text="&#x27F3; " FontSize="16"
-                                       Foreground="{DynamicResource PrimaryText}"
-                                       VerticalAlignment="Center" Visibility="Collapsed"/>
-                            <TextBlock Text="Inject" FontSize="16" FontWeight="SemiBold"
-                                       Foreground="{DynamicResource PrimaryText}"
-                                       VerticalAlignment="Center"/>
-                        </StackPanel>
-                    </Button>
+                    <!-- Inject Button + Auto Inject checkbox -->
+                    <Grid Grid.Row="6" VerticalAlignment="Bottom">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="10"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <Button Grid.Column="0" x:Name="InjectBtn" Style="{StaticResource InjectButton}"
+                                Height="50" Click="InjectButton_Click">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <!-- Lucide refresh-cw spinner (shown during injection) -->
+                                <Viewbox x:Name="InjectSpinner" Width="16" Height="16"
+                                         Margin="0,0,7,0" Visibility="Collapsed">
+                                    <Canvas Width="24" Height="24">
+                                        <Path Stroke="{DynamicResource PrimaryText}" StrokeThickness="2"
+                                              StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                              Fill="Transparent"
+                                              Data="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
+                                        <Path Stroke="{DynamicResource PrimaryText}" StrokeThickness="2"
+                                              StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                              Fill="Transparent"
+                                              Data="M21 3v5h-5"/>
+                                        <Path Stroke="{DynamicResource PrimaryText}" StrokeThickness="2"
+                                              StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                              Fill="Transparent"
+                                              Data="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/>
+                                        <Path Stroke="{DynamicResource PrimaryText}" StrokeThickness="2"
+                                              StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                              Fill="Transparent"
+                                              Data="M8 16H3v5"/>
+                                    </Canvas>
+                                </Viewbox>
+                                <TextBlock Text="Inject" FontSize="16" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource PrimaryText}"
+                                           VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+
+                        <!-- Auto Inject toggle -->
+                        <ToggleButton Grid.Column="2" x:Name="AutoInjectCheckBox"
+                                      Width="50" Height="50" Cursor="Hand"
+                                      Checked="AutoInjectCheckBox_Changed"
+                                      Unchecked="AutoInjectCheckBox_Changed"
+                                      ToolTip="Auto Inject — automatically injects when the selected process starts">
+                            <ToggleButton.Template>
+                                <ControlTemplate TargetType="ToggleButton">
+                                    <Border x:Name="Bg"
+                                            Background="{DynamicResource PanelBackground}"
+                                            CornerRadius="10">
+                                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                            <!-- Lucide zap icon — Path named directly in template scope for trigger targeting -->
+                                            <Viewbox x:Name="ZapIcon" Width="14" Height="14" HorizontalAlignment="Center" Margin="0,0,0,3" Opacity="0.4">
+                                                <Canvas Width="24" Height="24">
+                                                    <Path x:Name="Dot"
+                                                          Stroke="{DynamicResource MutedText}"
+                                                          StrokeThickness="2"
+                                                          StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                                          Fill="Transparent"
+                                                          Data="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/>
+                                                </Canvas>
+                                            </Viewbox>
+                                            <TextBlock x:Name="Label" Text="Auto"
+                                                       FontSize="9" FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource MutedText}"
+                                                       HorizontalAlignment="Center"/>
+                                        </StackPanel>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsChecked" Value="True">
+                                            <Setter TargetName="Dot" Property="Stroke" Value="{DynamicResource AccentBrush}"/>
+                                            <Setter TargetName="Dot" Property="Fill" Value="{DynamicResource AccentBrush}"/>
+                                            <Setter TargetName="Dot" Property="Opacity" Value="1"/>
+                                            <Setter TargetName="Label" Property="Foreground" Value="{DynamicResource PrimaryText}"/>
+                                        </Trigger>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="Bg" Property="Opacity" Value="0.85"/>
+                                        </Trigger>
+                                        <Trigger Property="IsPressed" Value="True">
+                                            <Setter TargetName="Bg" Property="Opacity" Value="0.65"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </ToggleButton.Template>
+                        </ToggleButton>
+                    </Grid>
                 </Grid>
             </Grid>
 

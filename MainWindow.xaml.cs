@@ -26,6 +26,7 @@ namespace DllInjector
         private Timer? _saveDebounceTimer;
         private readonly string _configPath;
         private string _lastSelectedProcessName = "";
+        private bool _autoInjectPending = false;
 
         // Icon cache: exe path → ImageSource (null = no icon available)
         private readonly ConcurrentDictionary<string, ImageSource?> _iconCache = new(StringComparer.OrdinalIgnoreCase);
@@ -97,32 +98,46 @@ namespace DllInjector
                     // Only update if the process set changed (by ID)
                     var newIds = processes.Select(p => p.Id).ToHashSet();
                     var oldIds = _allProcesses.Select(p => p.Id).ToHashSet();
-                    if (newIds.SetEquals(oldIds)) return;
-
-                    _allProcesses = processes;
-                    ApplySearchFilter();
-
-                    if (currentId.HasValue)
+                    if (!newIds.SetEquals(oldIds))
                     {
-                        var match = _allProcesses.FirstOrDefault(p => p.Id == currentId.Value);
-                        if (match != null)
+                        _allProcesses = processes;
+
+                        // Preserve name across ItemsSource reassignment — ApplySearchFilter
+                        // clears SelectedItem which fires SelectionChanged and wipes _lastSelectedProcessName
+                        var savedName = _lastSelectedProcessName;
+                        ApplySearchFilter();
+                        if (string.IsNullOrEmpty(_lastSelectedProcessName))
+                            _lastSelectedProcessName = savedName;
+
+                        if (currentId.HasValue)
                         {
-                            ProcessListBox.SelectedItem = match;
+                            var match = _allProcesses.FirstOrDefault(p => p.Id == currentId.Value);
+                            if (match != null)
+                            {
+                                ProcessListBox.SelectedItem = match;
+                            }
+                            else
+                            {
+                                ProcessListBox.SelectedItem = null;
+                                if (!string.IsNullOrEmpty(_lastSelectedProcessName))
+                                    SetStatus($"Status: Waiting for {_lastSelectedProcessName} (not running)", true);
+                            }
                         }
-                        else
+
+                        // Auto-select if saved process name appears in the new list
+                        if (ProcessListBox.SelectedItem == null && !string.IsNullOrEmpty(_lastSelectedProcessName))
                         {
-                            ProcessListBox.SelectedItem = null;
-                            if (!string.IsNullOrEmpty(_lastSelectedProcessName))
-                                SetStatus($"Status: Waiting for {_lastSelectedProcessName} (not running)", true);
+                            var match = _allProcesses.FirstOrDefault(p => p.DisplayName == _lastSelectedProcessName);
+                            if (match != null)
+                                ProcessListBox.SelectedItem = match;
                         }
                     }
 
-                    // Auto-select if saved process name appears in the new list
-                    if (ProcessListBox.SelectedItem == null && !string.IsNullOrEmpty(_lastSelectedProcessName))
+                    // Auto Inject: check every tick — not gated by list change
+                    if (_autoInjectPending && ProcessListBox.SelectedItem is ProcessItem autoTarget)
                     {
-                        var match = _allProcesses.FirstOrDefault(p => p.DisplayName == _lastSelectedProcessName);
-                        if (match != null)
-                            ProcessListBox.SelectedItem = match;
+                        _autoInjectPending = false;
+                        _ = RunAutoInjectAsync(autoTarget);
                     }
                 });
             }
@@ -267,6 +282,35 @@ namespace DllInjector
             }
         }
 
+        // ── Auto Inject ────────────────────────────────────────────────────────
+
+        private void AutoInjectCheckBox_Changed(object sender, RoutedEventArgs e)
+        {
+            bool enabled = AutoInjectCheckBox.IsChecked == true;
+            if (enabled)
+            {
+                if (string.IsNullOrEmpty(_lastSelectedProcessName))
+                {
+                    SetStatus("Status: Select a process before enabling Auto Inject", false);
+                    AutoInjectCheckBox.IsChecked = false;
+                    return;
+                }
+                if (_selectedDlls.Count == 0)
+                {
+                    SetStatus("Status: Add at least one DLL before enabling Auto Inject", false);
+                    AutoInjectCheckBox.IsChecked = false;
+                    return;
+                }
+                _autoInjectPending = true;
+                SetStatus($"Status: Auto Inject armed — waiting for {_lastSelectedProcessName}", true);
+            }
+            else
+            {
+                _autoInjectPending = false;
+                SetStatus("Status: Auto Inject disabled", true);
+            }
+        }
+
         // ── Injection ──────────────────────────────────────────────────────────
 
         private async void InjectButton_Click(object sender, RoutedEventArgs e)
@@ -312,6 +356,67 @@ namespace DllInjector
             catch (Exception ex)
             {
                 SetStatus($"Status: Injection error — {ex.Message}", false);
+            }
+            finally
+            {
+                InjectSpinner.Visibility = Visibility.Collapsed;
+                InjectBtn.IsEnabled = true;
+            }
+        }
+
+        private async Task RunAutoInjectAsync(ProcessItem target)
+        {
+            var dllSnapshot = _selectedDlls.ToList();
+            if (dllSnapshot.Count == 0) return;
+
+            // Verify the process is still alive before attempting injection
+            try
+            {
+                var p = Process.GetProcessById(target.Id);
+                if (p.HasExited)
+                {
+                    _autoInjectPending = true;
+                    return;
+                }
+            }
+            catch
+            {
+                // Process no longer exists — re-arm and wait for next launch
+                _autoInjectPending = true;
+                return;
+            }
+
+            InjectBtn.IsEnabled = false;
+            InjectSpinner.Visibility = Visibility.Visible;
+            SetStatus($"Status: Auto Inject — injecting into {target.DisplayName}...", true);
+
+            try
+            {
+                var results = await Task.Run(() =>
+                {
+                    var log = new List<string>();
+                    foreach (var dll in dllSnapshot)
+                    {
+                        bool ok = StandardInject(target.Id, dll.FullPath);
+                        log.Add($"{dll.FileName}: {(ok ? "OK" : "FAILED")}");
+                    }
+                    return log;
+                });
+
+                bool allOk = results.All(r => r.EndsWith("OK"));
+                SetStatus($"Status: Auto Inject — {string.Join("  |  ", results)}", allOk);
+                await Task.Delay(2500);
+
+                // Re-arm so the next process launch triggers injection again
+                if (AutoInjectCheckBox.IsChecked == true)
+                {
+                    _autoInjectPending = true;
+                    SetStatus($"Status: Auto Inject armed — waiting for {_lastSelectedProcessName}", true);
+                }
+            }
+            catch (Exception ex)
+            {
+                SetStatus($"Status: Auto Inject error — {ex.Message}", false);
             }
             finally
             {
@@ -400,6 +505,7 @@ namespace DllInjector
                     ProcessId   = (ProcessListBox.SelectedItem as ProcessItem)?.Id ?? 0,
                     DllPaths    = _selectedDlls.Select(d => d.FullPath).ToList(),
                     Theme       = selectedTheme,
+                    AutoInject  = AutoInjectCheckBox.IsChecked == true,
                     SavedAt     = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")
                 };
 
@@ -446,6 +552,12 @@ namespace DllInjector
                         _lastSelectedProcessName = targetProcess;
                         SetStatus($"Status: Waiting for {targetProcess} (not running)", true);
                     }
+                }
+
+                if (config.TryGetProperty("AutoInject", out var autoInject) && autoInject.GetBoolean())
+                {
+                    AutoInjectCheckBox.IsChecked = true;
+                    _autoInjectPending = true;
                 }
             }
             catch { /* Silent fail on load */ }
