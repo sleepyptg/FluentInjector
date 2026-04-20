@@ -24,9 +24,10 @@ namespace DllInjector
         private List<ProcessItem> _allProcesses = new();
         private Timer? _refreshTimer;
         private Timer? _saveDebounceTimer;
+        private int _saveDebounceVersion = 0;
         private readonly string _configPath;
         private string _lastSelectedProcessName = "";
-        private volatile bool _autoInjectPending = false;
+        private bool _autoInjectPending = false;
         private bool _lastStatusOk = true;
         private bool _suppressSelectionClear = false;
 
@@ -35,9 +36,10 @@ namespace DllInjector
         public MainWindow()
         {
             InitializeComponent();
-            _configPath = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-                "Downloads", "FluentInjector_Config.json");
+            string appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+            string configDir = Path.Combine(appData, "FluentInjector");
+            Directory.CreateDirectory(configDir);
+            _configPath = Path.Combine(configDir, "config.json");
             Loaded += MainWindow_Loaded;
             Closed += (_, _) =>
             {
@@ -62,8 +64,6 @@ namespace DllInjector
             _refreshTimer = new Timer(_ => Task.Run(LoadProcesses), null, 2000, 2000);
         }
 
-        // ── Process list ───────────────────────────────────────────────────────
-
         private void LoadProcesses()
         {
             try
@@ -75,12 +75,11 @@ namespace DllInjector
                     try
                     {
                         if (string.IsNullOrEmpty(p.MainWindowTitle)) continue;
-                        processes.Add(new ProcessItem
-                        {
-                            DisplayName = $"{p.ProcessName}.exe",
-                            Id = p.Id,
-                            ProcessIcon = GetProcessIconCached(p)
-                        });
+                        processes.Add(new ProcessItem(
+                            DisplayName: $"{p.ProcessName}.exe",
+                            Id: p.Id,
+                            ProcessIcon: GetProcessIconCached(p)
+                        ));
                     }
                     catch { }
                     finally
@@ -150,6 +149,12 @@ namespace DllInjector
                 if (_iconCache.TryGetValue(path, out var cached))
                     return cached;
 
+                if (_iconCache.Count > 200)
+                {
+                    var oldest = _iconCache.Keys.FirstOrDefault();
+                    if (oldest != null) _iconCache.TryRemove(oldest, out _);
+                }
+
                 ImageSource? icon = LoadIconFromPath(path);
                 _iconCache[path] = icon;
                 return icon;
@@ -191,23 +196,27 @@ namespace DllInjector
             ApplySearchFilter();
         }
 
-        // ── Custom process / list toggle ───────────────────────────────────────
-
         private bool _processListVisible = true;
 
         private void ToggleProcessList_Click(object sender, RoutedEventArgs e)
         {
             _processListVisible = !_processListVisible;
             ProcessListBox.Visibility = _processListVisible ? Visibility.Visible : Visibility.Collapsed;
-
-            // Swap eye / eye-off icon to reflect current state
-            var btn = (System.Windows.Controls.Button)sender;
-            var eyeOn  = (System.Windows.Controls.Viewbox)btn.Template.FindName("EyeIcon",    btn);
-            var eyeOff = (System.Windows.Controls.Viewbox)btn.Template.FindName("EyeOffIcon", btn);
-            if (eyeOn != null)  eyeOn.Visibility  = _processListVisible ? Visibility.Visible   : Visibility.Collapsed;
-            if (eyeOff != null) eyeOff.Visibility = _processListVisible ? Visibility.Collapsed : Visibility.Visible;
-
+            SyncToggleIcon();
             ScheduleSave();
+        }
+
+        /// <summary>
+        /// Syncs the eye / eye-off icon on the toggle button to match <see cref="_processListVisible"/>.
+        /// Uses Template.FindName; must be called after the template is applied (i.e. after Loaded).
+        /// </summary>
+        private void SyncToggleIcon()
+        {
+            if (!IsLoaded) return;
+            var eyeOn  = ToggleListBtn.Template.FindName("EyeIcon",    ToggleListBtn) as System.Windows.Controls.Viewbox;
+            var eyeOff = ToggleListBtn.Template.FindName("EyeOffIcon", ToggleListBtn) as System.Windows.Controls.Viewbox;
+            if (eyeOn  != null) eyeOn.Visibility  = _processListVisible ? Visibility.Visible   : Visibility.Collapsed;
+            if (eyeOff != null) eyeOff.Visibility = _processListVisible ? Visibility.Collapsed : Visibility.Visible;
         }
 
         private void AddCustomProcess_Click(object sender, RoutedEventArgs e)
@@ -250,6 +259,7 @@ namespace DllInjector
                 ProcessListBox.SelectedItem = match;
                 ProcessListBox.ScrollIntoView(match);
                 SetStatus($"Status: Selected {match.DisplayName} (PID {match.Id})", true);
+                ScheduleSave();
             }
             else
             {
@@ -275,8 +285,6 @@ namespace DllInjector
             }
         }
 
-        // ── Title bar ──────────────────────────────────────────────────────────
-
         private void TitleBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
             if (e.ChangedButton == MouseButton.Left)
@@ -285,8 +293,6 @@ namespace DllInjector
 
         private void MinimizeButton_Click(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
         private void CloseButton_Click(object sender, RoutedEventArgs e) => Close();
-
-        // ── DLL management ─────────────────────────────────────────────────────
 
         private void DropZone_Click(object sender, MouseButtonEventArgs e) => BrowseForDll();
 
@@ -329,7 +335,7 @@ namespace DllInjector
             {
                 if (!File.Exists(path)) continue;
                 if (_selectedDlls.Any(d => d.FullPath.Equals(path, StringComparison.OrdinalIgnoreCase))) continue;
-                _selectedDlls.Add(new DllItem { FileName = Path.GetFileName(path), FullPath = path });
+                _selectedDlls.Add(new DllItem(FileName: Path.GetFileName(path), FullPath: path));
             }
             SetStatus($"Status: {_selectedDlls.Count} DLL(s) selected", true);
         }
@@ -342,8 +348,6 @@ namespace DllInjector
                 if (item != null) _selectedDlls.Remove(item);
             }
         }
-
-        // ── Auto Inject ────────────────────────────────────────────────────────
 
         private void AutoInjectCheckBox_Changed(object sender, RoutedEventArgs e)
         {
@@ -371,8 +375,6 @@ namespace DllInjector
                 SetStatus("Status: Auto Inject disabled", true);
             }
         }
-
-        // ── Injection ──────────────────────────────────────────────────────────
 
         private async void InjectButton_Click(object sender, RoutedEventArgs e)
         {
@@ -402,8 +404,8 @@ namespace DllInjector
                     var log = new List<string>();
                     foreach (var dll in dllSnapshot)
                     {
-                        bool ok = StandardInject(target.Id, dll.FullPath);
-                        log.Add($"{dll.FileName}: {(ok ? "OK" : "FAILED")}");
+                        string? err = StandardInject(target.Id, dll.FullPath);
+                        log.Add(err == null ? $"{dll.FileName}: OK" : $"{dll.FileName}: {err}");
                     }
                     return log;
                 });
@@ -456,8 +458,8 @@ namespace DllInjector
                     var log = new List<string>();
                     foreach (var dll in dllSnapshot)
                     {
-                        bool ok = StandardInject(target.Id, dll.FullPath);
-                        log.Add($"{dll.FileName}: {(ok ? "OK" : "FAILED")}");
+                        string? err = StandardInject(target.Id, dll.FullPath);
+                        log.Add(err == null ? $"{dll.FileName}: OK" : $"{dll.FileName}: {err}");
                     }
                     return log;
                 });
@@ -466,9 +468,6 @@ namespace DllInjector
                 SetStatus($"Status: Auto Inject — {string.Join("  |  ", results)}", allOk);
                 await Task.Delay(2500);
 
-                // FIX #5: re-arm regardless of success/failure so auto-inject keeps working
-                // after a failed attempt (e.g. wrong bitness, missing dependency).
-                // Always wait for exit first so we don't inject twice into the same instance.
                 if (AutoInjectCheckBox.IsChecked == true)
                 {
                     SetStatus($"Status: Auto Inject — waiting for {_lastSelectedProcessName} to restart", true);
@@ -477,9 +476,12 @@ namespace DllInjector
             }
             catch (Exception ex)
             {
-                SetStatus($"Status: Auto Inject error — {ex.Message}", false);
-                if (AutoInjectCheckBox.IsChecked == true)
-                    _ = WaitForProcessExitThenRearmAsync(target.Id);
+                Dispatcher.Invoke(() =>
+                {
+                    SetStatus($"Status: Auto Inject error — {ex.Message}", false);
+                    if (AutoInjectCheckBox.IsChecked == true)
+                        _ = WaitForProcessExitThenRearmAsync(target.Id);
+                });
             }
             finally
             {
@@ -493,6 +495,8 @@ namespace DllInjector
             try
             {
                 using var p = Process.GetProcessById(processId);
+                // If the process exits between GetProcessById and WaitForExit the exception
+                // is swallowed intentionally — the process is gone, so fall through to re-arm.
                 await Task.Run(() =>
                 {
                     try { p.WaitForExit(); }
@@ -501,16 +505,25 @@ namespace DllInjector
             }
             catch { }
 
-            if (AutoInjectCheckBox.IsChecked == true)
+            Dispatcher.Invoke(() =>
             {
-                _autoInjectPending = true;
-                Dispatcher.Invoke(() =>
-                    SetStatus($"Status: Auto Inject armed — waiting for {_lastSelectedProcessName}", true));
-            }
+                if (AutoInjectCheckBox.IsChecked == true)
+                {
+                    _autoInjectPending = true;
+                    SetStatus($"Status: Auto Inject armed — waiting for {_lastSelectedProcessName}", true);
+                }
+            });
         }
 
-        private bool StandardInject(int processId, string dllPath)
+        // Returns null on success, or a human-readable error string on failure.
+        private string? StandardInject(int processId, string dllPath)
         {
+            if (!Path.IsPathRooted(dllPath) || !File.Exists(dllPath))
+                return "DLL not found";
+
+            // Bitness check — injecting a mismatched DLL causes a silent LoadLibrary failure
+            bool dllIs32Bit = IsDll32Bit(dllPath);
+
             IntPtr hProcess = OpenProcess(
                 ProcessAccessFlags.CreateThread |
                 ProcessAccessFlags.QueryInformation |
@@ -519,42 +532,51 @@ namespace DllInjector
                 ProcessAccessFlags.VirtualMemoryRead,
                 false, processId);
 
-            if (hProcess == IntPtr.Zero) return false;
+            if (hProcess == IntPtr.Zero)
+                return $"OpenProcess failed (error {Marshal.GetLastWin32Error()})";
 
             try
             {
+                IsWow64Process(hProcess, out bool processIs32Bit);
+                if (dllIs32Bit != processIs32Bit)
+                    return dllIs32Bit
+                        ? "Bitness mismatch: 32-bit DLL \u2192 64-bit process"
+                        : "Bitness mismatch: 64-bit DLL \u2192 32-bit process";
+
                 IntPtr loadLibW = GetProcAddress(GetModuleHandle("kernel32.dll"), "LoadLibraryW");
-                if (loadLibW == IntPtr.Zero) return false;
+                if (loadLibW == IntPtr.Zero) return "GetProcAddress(LoadLibraryW) failed";
 
                 byte[] pathBytes = Encoding.Unicode.GetBytes(dllPath + "\0");
                 IntPtr mem = VirtualAllocEx(hProcess, IntPtr.Zero, (uint)pathBytes.Length,
                     AllocationType.Commit | AllocationType.Reserve, MemoryProtection.ReadWrite);
-                if (mem == IntPtr.Zero) return false;
+                if (mem == IntPtr.Zero) return "VirtualAllocEx failed";
 
                 try
                 {
-                    bool written = WriteProcessMemory(hProcess, mem, pathBytes, (uint)pathBytes.Length, out _);
-                    if (!written) return false;
+                    if (!WriteProcessMemory(hProcess, mem, pathBytes, (uint)pathBytes.Length, out _))
+                        return "WriteProcessMemory failed";
 
                     IntPtr hThread = CreateRemoteThread(hProcess, IntPtr.Zero, 0, loadLibW, mem, 0, IntPtr.Zero);
-                    if (hThread == IntPtr.Zero) return false;
+                    if (hThread == IntPtr.Zero) return "CreateRemoteThread failed";
 
-                    uint waitResult = WaitForSingleObject(hThread, 5000);
-                    if (waitResult != 0)
+                    try
+                    {
+                        // Wait indefinitely — freeing memory while DllMain is still running crashes the target.
+                        // DllMain is expected to return quickly; INFINITE is the safe choice here.
+                        const uint INFINITE = 0xFFFFFFFF;
+                        WaitForSingleObject(hThread, INFINITE);
+
+                        GetExitCodeThread(hThread, out uint exitCode);
+                        return exitCode != 0 ? null : "LoadLibrary returned NULL (check DLL dependencies / path)";
+                    }
+                    finally
                     {
                         CloseHandle(hThread);
-                        return false;
                     }
-
-                    GetExitCodeThread(hThread, out uint exitCode);
-                    CloseHandle(hThread);
-                    VirtualFreeEx(hProcess, mem, 0, AllocationType.Release);
-                    return exitCode != 0;
                 }
-                catch
+                finally
                 {
                     VirtualFreeEx(hProcess, mem, 0, AllocationType.Release);
-                    throw;
                 }
             }
             finally
@@ -563,12 +585,37 @@ namespace DllInjector
             }
         }
 
-        // ── Config ─────────────────────────────────────────────────────────────
+        /// <summary>Reads the PE Machine field to determine if a DLL targets x86 (32-bit).</summary>
+        private static bool IsDll32Bit(string dllPath)
+        {
+            try
+            {
+                using var fs = new FileStream(dllPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+                using var br = new BinaryReader(fs);
+                // DOS header: e_magic = 0x5A4D ("MZ"), e_lfanew at offset 0x3C
+                fs.Seek(0x3C, SeekOrigin.Begin);
+                int peOffset = br.ReadInt32();
+                fs.Seek(peOffset, SeekOrigin.Begin);
+                uint peSig = br.ReadUInt32(); // "PE\0\0"
+                if (peSig != 0x00004550) return false;
+                ushort machine = br.ReadUInt16(); // IMAGE_FILE_HEADER.Machine
+                return machine == 0x014C; // IMAGE_FILE_MACHINE_I386
+            }
+            catch
+            {
+                return false; // assume 64-bit on read failure
+            }
+        }
 
         private void ScheduleSave()
         {
+            int version = Interlocked.Increment(ref _saveDebounceVersion);
             _saveDebounceTimer?.Dispose();
-            _saveDebounceTimer = new Timer(_ => Dispatcher.Invoke(SaveConfig), null, 300, Timeout.Infinite);
+            _saveDebounceTimer = new Timer(_ =>
+            {
+                if (Volatile.Read(ref _saveDebounceVersion) == version)
+                    Dispatcher.Invoke(SaveConfig);
+            }, null, 300, Timeout.Infinite);
         }
 
         private void SaveConfig()
@@ -582,7 +629,6 @@ namespace DllInjector
                 var config = new
                 {
                     ProcessName         = selectedProcess?.DisplayName ?? _lastSelectedProcessName,
-                    ProcessId           = selectedProcess?.Id ?? 0,
                     DllPaths            = _selectedDlls.Select(d => d.FullPath).ToList(),
                     Theme               = selectedTheme,
                     AutoInject          = AutoInjectCheckBox.IsChecked == true,
@@ -612,7 +658,7 @@ namespace DllInjector
                     {
                         string dllPath = path.GetString() ?? "";
                         if (File.Exists(dllPath))
-                            _selectedDlls.Add(new DllItem { FileName = Path.GetFileName(dllPath), FullPath = dllPath });
+                            _selectedDlls.Add(new DllItem(FileName: Path.GetFileName(dllPath), FullPath: dllPath));
                     }
                 }
 
@@ -644,20 +690,15 @@ namespace DllInjector
                 {
                     _processListVisible = listVisible.GetBoolean();
                     ProcessListBox.Visibility = _processListVisible ? Visibility.Visible : Visibility.Collapsed;
-
-                    Dispatcher.InvokeAsync(() =>
-                    {
-                        var eyeOn  = (System.Windows.Controls.Viewbox)ToggleListBtn.Template.FindName("EyeIcon",    ToggleListBtn);
-                        var eyeOff = (System.Windows.Controls.Viewbox)ToggleListBtn.Template.FindName("EyeOffIcon", ToggleListBtn);
-                        if (eyeOn  != null) eyeOn.Visibility  = _processListVisible ? Visibility.Visible   : Visibility.Collapsed;
-                        if (eyeOff != null) eyeOff.Visibility = _processListVisible ? Visibility.Collapsed : Visibility.Visible;
-                    }, System.Windows.Threading.DispatcherPriority.Loaded);
+                    // Defer icon sync until after the template is applied
+                    Dispatcher.InvokeAsync(SyncToggleIcon, System.Windows.Threading.DispatcherPriority.Loaded);
                 }
             }
-            catch { /* Silent fail on load */ }
+            catch (Exception ex)
+            {
+                SetStatus($"Status: Failed to load config — {ex.Message}", false);
+            }
         }
-
-        // ── Status ─────────────────────────────────────────────────────────────
 
         private void SetStatus(string message, bool ok)
         {
@@ -667,8 +708,6 @@ namespace DllInjector
                 ? (SolidColorBrush)Application.Current.Resources["StatusOkText"]
                 : (SolidColorBrush)Application.Current.Resources["ErrorText"];
         }
-
-        // ── Theme ──────────────────────────────────────────────────────────────
 
         private void ThemeComboBox_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
         {
@@ -706,79 +745,104 @@ namespace DllInjector
             catch { return true; }
         }
 
+        private record ThemeColors(
+            string RootBg,     string PanelBg,
+            string Text,       string MutedText,   string StatusOk,
+            string Hover,      string Selection,   string InactiveSel,
+            string ComboHover, string ComboSel,
+            string Accent);
+
+        private static readonly ThemeColors DarkTheme = new(
+            RootBg:      "#AA1E1E1E", PanelBg:     "#551E1E1E",
+            Text:        "#F0F0F0",   MutedText:   "#AAAAAA",   StatusOk:    "#AAAAAA",
+            Hover:       "#15000000", Selection:   "#207B68EE", InactiveSel: "#107B68EE",
+            ComboHover:  "#25000000", ComboSel:    "#45000000",
+            Accent:      "#7B68EE");
+
+        private static readonly ThemeColors DarkerTheme = new(
+            RootBg:      "#CC0F0F0F", PanelBg:     "#550F0F0F",
+            Text:        "#F0F0F0",   MutedText:   "#AAAAAA",   StatusOk:    "#AAAAAA",
+            Hover:       "#15000000", Selection:   "#207B68EE", InactiveSel: "#107B68EE",
+            ComboHover:  "#25000000", ComboSel:    "#45000000",
+            Accent:      "#7B68EE");
+
+        private static readonly ThemeColors LightTheme = new(
+            RootBg:      "#88C8C8C8", PanelBg:     "#55FFFFFF",
+            Text:        "#1A1A2E",   MutedText:   "#666666",   StatusOk:    "#444444",
+            Hover:       "#18000000", Selection:   "#207B68EE", InactiveSel: "#107B68EE",
+            ComboHover:  "#15000000", ComboSel:    "#30000000",
+            Accent:      "#7B68EE");
+
         private void ApplyTheme(string theme)
         {
             if (theme == "Auto")
                 theme = IsSystemDarkMode() ? "Dark" : "Light";
 
-            switch (theme)
+            ThemeColors colors = theme switch
             {
-                case "Dark":
-                    SetThemeColors("#AA1E1E1E", "#551E1E1E", "#F0F0F0", "#AAAAAA", "#AAAAAA",
-                                   "#15000000", "#207B68EE", "#107B68EE", "#25000000", "#45000000", "#7B68EE");
-                    break;
-                case "Darker":
-                    SetThemeColors("#CC0F0F0F", "#550F0F0F", "#F0F0F0", "#AAAAAA", "#AAAAAA",
-                                   "#15000000", "#207B68EE", "#107B68EE", "#25000000", "#45000000", "#7B68EE");
-                    break;
-                case "Light":
-                    SetThemeColors("#88C8C8C8", "#55FFFFFF", "#1A1A2E", "#666666", "#444444",
-                                   "#18000000", "#207B68EE", "#107B68EE", "#15000000", "#30000000", "#7B68EE");
-                    break;
-            }
+                "Darker" => DarkerTheme,
+                "Light"  => LightTheme,
+                _        => DarkTheme,
+            };
+
+            SetThemeColors(colors);
         }
 
-        private void SetThemeColors(
-            string rootBg, string panelBg, string text, string mutedText, string statusOk,
-            string hover, string selection, string inactiveSel, string comboHover, string comboSel, string accent)
+        private void SetThemeColors(ThemeColors t)
         {
             var res = Application.Current.Resources;
 
-            SolidColorBrush Brush(string hex) =>
-                new SolidColorBrush((Color)ColorConverter.ConvertFromString(hex));
+            SolidColorBrush Brush(string hex)
+            {
+                var b = new SolidColorBrush((Color)ColorConverter.ConvertFromString(hex));
+                b.Freeze();
+                return b;
+            }
 
-            res["RootBackground"]      = Brush(rootBg);
-            res["PanelBackground"]     = Brush(panelBg);
-            res["PrimaryText"]         = Brush(text);
-            res["MutedText"]           = Brush(mutedText);
-            res["StatusOkText"]        = Brush(statusOk);
-            res["HoverBackground"]     = Brush(hover);
-            res["SelectionBackground"] = Brush(selection);
-            res["InactiveSelection"]   = Brush(inactiveSel);
-            res["ComboHover"]          = Brush(comboHover);
-            res["ComboSelected"]       = Brush(comboSel);
-            res["AccentBrush"]         = Brush(accent);
+            res["RootBackground"]      = Brush(t.RootBg);
+            res["PanelBackground"]     = Brush(t.PanelBg);
+            res["PrimaryText"]         = Brush(t.Text);
+            res["MutedText"]           = Brush(t.MutedText);
+            res["StatusOkText"]        = Brush(t.StatusOk);
+            res["HoverBackground"]     = Brush(t.Hover);
+            res["SelectionBackground"] = Brush(t.Selection);
+            res["InactiveSelection"]   = Brush(t.InactiveSel);
+            res["ComboHover"]          = Brush(t.ComboHover);
+            res["ComboSelected"]       = Brush(t.ComboSel);
+            res["AccentBrush"]         = Brush(t.Accent);
 
             // ListBox system brushes can't use DynamicResource — update them directly on the ListBox
-            var selColor   = (Color)ColorConverter.ConvertFromString(selection);
-            var inactColor = (Color)ColorConverter.ConvertFromString(inactiveSel);
-            var textColor  = (Color)ColorConverter.ConvertFromString(text);
-            ProcessListBox.Resources[SystemColors.HighlightBrushKey]                      = new SolidColorBrush(selColor);
-            ProcessListBox.Resources[SystemColors.HighlightTextBrushKey]                  = new SolidColorBrush(textColor);
-            ProcessListBox.Resources[SystemColors.InactiveSelectionHighlightBrushKey]     = new SolidColorBrush(inactColor);
-            ProcessListBox.Resources[SystemColors.InactiveSelectionHighlightTextBrushKey] = new SolidColorBrush(textColor);
+            ProcessListBox.Resources[SystemColors.HighlightBrushKey]                      = Brush(t.Selection);
+            ProcessListBox.Resources[SystemColors.HighlightTextBrushKey]                  = Brush(t.Text);
+            ProcessListBox.Resources[SystemColors.InactiveSelectionHighlightBrushKey]     = Brush(t.InactiveSel);
+            ProcessListBox.Resources[SystemColors.InactiveSelectionHighlightTextBrushKey] = Brush(t.Text);
 
             SetStatus(StatusTextBlock.Text, _lastStatusOk);
         }
 
-        // ── Acrylic blur ───────────────────────────────────────────────────────
+        private const int DWMWA_SYSTEMBACKDROP_TYPE = 38;
+        private const int DWMWA_WINDOW_CORNER_PREF  = 33;
+        private const int DWMWCP_ROUND              = 2;
+        private const int DWMSBT_TRANSIENTWINDOW    = 3; // Acrylic
 
         private void ApplyAcrylicBlur()
         {
             var helper = new WindowInteropHelper(this);
             if (helper.Handle == IntPtr.Zero) return;
 
-            int backdropType = 3;
-            DwmSetWindowAttribute(helper.Handle, 38, ref backdropType, Marshal.SizeOf<int>());
+            int backdropType = DWMSBT_TRANSIENTWINDOW;
+            DwmSetWindowAttribute(helper.Handle, DWMWA_SYSTEMBACKDROP_TYPE, ref backdropType, Marshal.SizeOf<int>());
 
-            int cornerPref = 2;
-            DwmSetWindowAttribute(helper.Handle, 33, ref cornerPref, Marshal.SizeOf<int>());
+            int cornerPref = DWMWCP_ROUND;
+            DwmSetWindowAttribute(helper.Handle, DWMWA_WINDOW_CORNER_PREF, ref cornerPref, Marshal.SizeOf<int>());
         }
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool IsWow64Process(IntPtr hProcess, [MarshalAs(UnmanagedType.Bool)] out bool wow64Process);
 
         [DllImport("dwmapi.dll")]
         private static extern int DwmSetWindowAttribute(IntPtr hwnd, int dwAttribute, ref int pvAttribute, int cbAttribute);
-
-        // ── Windows API ────────────────────────────────────────────────────────
 
         [DllImport("kernel32.dll")]
         private static extern IntPtr OpenProcess(ProcessAccessFlags access, bool inherit, int pid);
@@ -813,22 +877,9 @@ namespace DllInjector
         private static extern bool CloseHandle(IntPtr handle);
     }
 
-    // ── Data models ────────────────────────────────────────────────────────────
+    public record ProcessItem(string DisplayName, int Id, ImageSource? ProcessIcon);
 
-    public class ProcessItem
-    {
-        public string DisplayName { get; set; } = string.Empty;
-        public int Id { get; set; }
-        public ImageSource? ProcessIcon { get; set; }
-    }
-
-    public class DllItem
-    {
-        public string FileName { get; set; } = string.Empty;
-        public string FullPath { get; set; } = string.Empty;
-    }
-
-    // ── Win32 enums ────────────────────────────────────────────────────────────
+    public record DllItem(string FileName, string FullPath);
 
     [Flags]
     internal enum ProcessAccessFlags : uint
