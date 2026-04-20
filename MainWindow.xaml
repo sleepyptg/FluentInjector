@@ -292,43 +292,233 @@
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="10"/>
                             <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="8"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="6"/>
                             <RowDefinition Height="*"/>
                         </Grid.RowDefinitions>
                         <TextBlock Grid.Row="0" Text="Select Process" FontSize="14" FontWeight="SemiBold"
                                    Foreground="{DynamicResource PrimaryText}"/>
-                        <Border Grid.Row="2" x:Name="SearchBoxBorder"
-                                Background="{DynamicResource HoverBackground}" CornerRadius="8" Height="36">
-                            <Grid>
-                                <TextBox x:Name="SearchBox"
-                                         Background="Transparent"
-                                         Foreground="{DynamicResource PrimaryText}"
-                                         CaretBrush="{DynamicResource PrimaryText}"
-                                         BorderThickness="0"
-                                         Padding="12,8"
-                                         FontSize="13"
-                                         VerticalContentAlignment="Center"
-                                         TextChanged="SearchBox_TextChanged"/>
-                                <TextBlock Text="Search..."
-                                           Foreground="{DynamicResource MutedText}"
-                                           FontSize="13"
-                                           VerticalAlignment="Center"
-                                           Margin="14,0,0,0"
-                                           IsHitTestVisible="False">
-                                    <TextBlock.Style>
-                                        <Style TargetType="TextBlock">
-                                            <Setter Property="Visibility" Value="Collapsed"/>
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding Text, ElementName=SearchBox}" Value="">
-                                                    <Setter Property="Visibility" Value="Visible"/>
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </TextBlock.Style>
-                                </TextBlock>
-                            </Grid>
-                        </Border>
-                        <ListBox Grid.Row="4" x:Name="ProcessListBox"
+
+                        <!-- Search bar row with show/hide and custom process buttons -->
+                        <Grid Grid.Row="2">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="6"/>
+                                <ColumnDefinition Width="36"/>
+                                <ColumnDefinition Width="4"/>
+                                <ColumnDefinition Width="36"/>
+                            </Grid.ColumnDefinitions>
+
+                            <Border Grid.Column="0" x:Name="SearchBoxBorder"
+                                    Background="{DynamicResource HoverBackground}" CornerRadius="8" Height="36">
+                                <Grid>
+                                    <TextBox x:Name="SearchBox"
+                                             Background="Transparent"
+                                             Foreground="{DynamicResource PrimaryText}"
+                                             CaretBrush="{DynamicResource PrimaryText}"
+                                             BorderThickness="0"
+                                             Padding="12,8"
+                                             FontSize="13"
+                                             VerticalContentAlignment="Center"
+                                             TextChanged="SearchBox_TextChanged"/>
+                                    <TextBlock Text="Search..."
+                                               Foreground="{DynamicResource MutedText}"
+                                               FontSize="13"
+                                               VerticalAlignment="Center"
+                                               Margin="14,0,0,0"
+                                               IsHitTestVisible="False">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding Text, ElementName=SearchBox}" Value="">
+                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </Grid>
+                            </Border>
+
+                            <!-- Show/Hide process list toggle -->
+                            <Button Grid.Column="2" x:Name="ToggleListBtn"
+                                    Width="36" Height="36" Cursor="Hand"
+                                    Background="{DynamicResource HoverBackground}"
+                                    BorderThickness="0"
+                                    ToolTip="Show / Hide process list"
+                                    Click="ToggleProcessList_Click">
+                                <Button.Template>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border Background="{TemplateBinding Background}" CornerRadius="8">
+                                            <Grid>
+                                                <!-- Lucide eye (list visible) -->
+                                                <Viewbox x:Name="EyeIcon" Width="16" Height="16"
+                                                         HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                         Visibility="Visible">
+                                                    <Canvas Width="24" Height="24">
+                                                        <Path Stroke="{DynamicResource MutedText}" StrokeThickness="2"
+                                                              StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                                              Fill="Transparent"
+                                                              Data="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"/>
+                                                        <Path Stroke="{DynamicResource MutedText}" StrokeThickness="2"
+                                                              StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                                              Fill="Transparent"
+                                                              Data="M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"/>
+                                                    </Canvas>
+                                                </Viewbox>
+                                                <!-- Lucide eye-off (list hidden) -->
+                                                <Viewbox x:Name="EyeOffIcon" Width="16" Height="16"
+                                                         HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                         Visibility="Collapsed">
+                                                    <Canvas Width="24" Height="24">
+                                                        <Path Stroke="{DynamicResource MutedText}" StrokeThickness="2"
+                                                              StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                                              Fill="Transparent"
+                                                              Data="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49"/>
+                                                        <Path Stroke="{DynamicResource MutedText}" StrokeThickness="2"
+                                                              StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                                              Fill="Transparent"
+                                                              Data="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143"/>
+                                                        <Path Stroke="{DynamicResource MutedText}" StrokeThickness="2"
+                                                              StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                                              Fill="Transparent"
+                                                              Data="M13.875 13.875A3 3 0 0 1 10.125 10.125"/>
+                                                        <Path Stroke="{DynamicResource MutedText}" StrokeThickness="2"
+                                                              StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                                              Fill="Transparent"
+                                                              Data="M2 2 L22 22"/>
+                                                    </Canvas>
+                                                </Viewbox>
+                                            </Grid>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter Property="Opacity" Value="0.8"/>
+                                            </Trigger>
+                                            <Trigger Property="IsPressed" Value="True">
+                                                <Setter Property="Opacity" Value="0.6"/>
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Button.Template>
+                            </Button>
+
+                            <!-- Custom process button (Lucide terminal) -->
+                            <Button Grid.Column="4" x:Name="AddCustomProcessBtn"
+                                    Width="36" Height="36" Cursor="Hand"
+                                    Background="{DynamicResource HoverBackground}"
+                                    BorderThickness="0"
+                                    ToolTip="Enter a custom process name"
+                                    Click="AddCustomProcess_Click">
+                                <Button.Template>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border Background="{TemplateBinding Background}" CornerRadius="8">
+                                            <Viewbox Width="16" Height="16"
+                                                     HorizontalAlignment="Center" VerticalAlignment="Center">
+                                                <Canvas Width="24" Height="24">
+                                                    <!-- terminal: outer rect -->
+                                                    <Path Stroke="{DynamicResource MutedText}" StrokeThickness="2"
+                                                          StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                                          Fill="Transparent"
+                                                          Data="M3 3h18a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/>
+                                                    <!-- terminal: prompt chevron -->
+                                                    <Path Stroke="{DynamicResource MutedText}" StrokeThickness="2"
+                                                          StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                                          Fill="Transparent"
+                                                          Data="M7 9 L11 12 L7 15"/>
+                                                    <!-- terminal: underscore cursor -->
+                                                    <Path Stroke="{DynamicResource MutedText}" StrokeThickness="2"
+                                                          StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                                          Fill="Transparent"
+                                                          Data="M13 15 L17 15"/>
+                                                </Canvas>
+                                            </Viewbox>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter Property="Opacity" Value="0.8"/>
+                                            </Trigger>
+                                            <Trigger Property="IsPressed" Value="True">
+                                                <Setter Property="Opacity" Value="0.6"/>
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Button.Template>
+                            </Button>
+                        </Grid>
+
+                        <!-- Custom process input row (hidden by default) -->
+                        <Grid Grid.Row="3" x:Name="CustomProcessRow" Visibility="Collapsed" Margin="0,4,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="6"/>
+                                <ColumnDefinition Width="36"/>
+                            </Grid.ColumnDefinitions>
+                            <Border Grid.Column="0"
+                                    Background="{DynamicResource HoverBackground}" CornerRadius="8" Height="32">
+                                <Grid>
+                                    <TextBox x:Name="CustomProcessBox"
+                                             Background="Transparent"
+                                             Foreground="{DynamicResource PrimaryText}"
+                                             CaretBrush="{DynamicResource PrimaryText}"
+                                             BorderThickness="0"
+                                             Padding="10,6"
+                                             FontSize="13"
+                                             VerticalContentAlignment="Center"
+                                             KeyDown="CustomProcessBox_KeyDown"/>
+                                    <TextBlock Text="e.g. notepad.exe"
+                                               Foreground="{DynamicResource MutedText}"
+                                               FontSize="12"
+                                               VerticalAlignment="Center"
+                                               Margin="12,0,0,0"
+                                               IsHitTestVisible="False">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding Text, ElementName=CustomProcessBox}" Value="">
+                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </Grid>
+                            </Border>
+                            <Button Grid.Column="2"
+                                    Width="36" Height="32" Cursor="Hand"
+                                    Background="{DynamicResource HoverBackground}"
+                                    BorderThickness="0"
+                                    ToolTip="Confirm custom process"
+                                    Click="ConfirmCustomProcess_Click">
+                                <Button.Template>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border Background="{TemplateBinding Background}" CornerRadius="8">
+                                            <Viewbox Width="14" Height="14"
+                                                     HorizontalAlignment="Center" VerticalAlignment="Center">
+                                                <Canvas Width="24" Height="24">
+                                                    <Path Stroke="{DynamicResource MutedText}" StrokeThickness="2.5"
+                                                          StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                                          Fill="Transparent"
+                                                          Data="M20 6 L9 17 L4 12"/>
+                                                </Canvas>
+                                            </Viewbox>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter Property="Opacity" Value="0.8"/>
+                                            </Trigger>
+                                            <Trigger Property="IsPressed" Value="True">
+                                                <Setter Property="Opacity" Value="0.6"/>
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Button.Template>
+                            </Button>
+                        </Grid>
+
+                        <ListBox Grid.Row="5" x:Name="ProcessListBox"
                                  Background="Transparent" BorderThickness="0"
                                  Foreground="{DynamicResource PrimaryText}"
                                  ItemContainerStyle="{StaticResource ProcessListItem}"
@@ -439,7 +629,23 @@
                                             <Button Grid.Column="3" Content="&#x2715;" FontSize="11"
                                                     Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                                                     Background="Transparent" BorderThickness="0" Cursor="Hand"
-                                                    Tag="{Binding FullPath}" Click="RemoveDll_Click" Padding="4,0"/>
+                                                    Tag="{Binding FullPath}" Click="RemoveDll_Click" Padding="4,0">
+                                                <Button.Template>
+                                                    <ControlTemplate TargetType="Button">
+                                                        <Border Background="Transparent" Padding="{TemplateBinding Padding}">
+                                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                        </Border>
+                                                        <ControlTemplate.Triggers>
+                                                            <Trigger Property="IsMouseOver" Value="True">
+                                                                <Setter Property="Opacity" Value="0.6"/>
+                                                            </Trigger>
+                                                            <Trigger Property="IsPressed" Value="True">
+                                                                <Setter Property="Opacity" Value="0.3"/>
+                                                            </Trigger>
+                                                        </ControlTemplate.Triggers>
+                                                    </ControlTemplate>
+                                                </Button.Template>
+                                            </Button>
                                         </Grid>
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
