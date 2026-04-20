@@ -2,8 +2,6 @@
 
 A Windows DLL injector with a modern WPF UI.
 
-![preview](Assets/FluentInjector.png)
-
 ## Requirements
 
 - Windows 11 22H2+ (Build 22621) — acrylic blur requires this
