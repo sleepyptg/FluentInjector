@@ -1,0 +1,23 @@
+<Application x:Class="DllInjector.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             StartupUri="MainWindow.xaml">
+    <Application.Resources>
+        <!-- Theme brushes updated at runtime by SetThemeColors(). Defaults = Dark theme. -->
+        <SolidColorBrush x:Key="RootBackground"       Color="#AA1E1E1E"/>
+        <SolidColorBrush x:Key="PanelBackground"      Color="#551E1E1E"/>
+        <SolidColorBrush x:Key="PrimaryText"          Color="#F0F0F0"/>
+        <SolidColorBrush x:Key="MutedText"            Color="#AAAAAA"/>
+        <SolidColorBrush x:Key="StatusOkText"         Color="#AAAAAA"/>
+        <SolidColorBrush x:Key="HoverBackground"      Color="#15000000"/>
+        <SolidColorBrush x:Key="SelectionBackground"  Color="#207B68EE"/>
+        <SolidColorBrush x:Key="InactiveSelection"    Color="#107B68EE"/>
+        <SolidColorBrush x:Key="ComboHover"           Color="#25000000"/>
+        <SolidColorBrush x:Key="ComboSelected"        Color="#45000000"/>
+        <SolidColorBrush x:Key="AccentBrush"          Color="#7B68EE"/>
+        <!-- Semantic / fixed brushes - never change with theme -->
+        <SolidColorBrush x:Key="CheckmarkGreen"       Color="#4CAF50"/>
+        <SolidColorBrush x:Key="CloseHoverBackground" Color="#33FF3333"/>
+        <SolidColorBrush x:Key="ErrorText"            Color="#D32F2F"/>
+    </Application.Resources>
+</Application>

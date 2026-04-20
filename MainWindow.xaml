@@ -1,0 +1,416 @@
+﻿<Window x:Class="DllInjector.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
+        Title="Fluent Injector"
+        Height="520"
+        Width="820"
+        WindowStyle="None"
+        ResizeMode="CanMinimize"
+        WindowStartupLocation="CenterScreen"
+        Background="Transparent"
+        Icon="Assets/FluentInjector.png">
+
+    <WindowChrome.WindowChrome>
+        <WindowChrome CaptionHeight="0"
+                      ResizeBorderThickness="4"
+                      CornerRadius="0"
+                      GlassFrameThickness="-1"
+                      UseAeroCaptionButtons="False"/>
+    </WindowChrome.WindowChrome>
+
+    <Window.Resources>
+        <Style x:Key="ProcessListItem" TargetType="ListBoxItem">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Padding" Value="10,8"/>
+            <Setter Property="Margin" Value="0,2"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <Border Background="{TemplateBinding Background}"
+                                CornerRadius="8"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="{DynamicResource HoverBackground}"/>
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter Property="Background" Value="{DynamicResource SelectionBackground}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="FlatComboBox" TargetType="ComboBox">
+            <Setter Property="Background" Value="{DynamicResource PanelBackground}"/>
+            <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBox">
+                        <Grid>
+                            <Border x:Name="border"
+                                    Background="{TemplateBinding Background}"
+                                    CornerRadius="8">
+                                <Grid>
+                                    <ContentPresenter x:Name="ContentSite"
+                                                      Content="{TemplateBinding SelectionBoxItem}"
+                                                      ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+                                                      TextBlock.Foreground="{TemplateBinding Foreground}"
+                                                      Margin="12,0,32,0"
+                                                      VerticalAlignment="Center"/>
+                                    <TextBlock Text="&#x25BE;" FontSize="12"
+                                               Foreground="{TemplateBinding Foreground}"
+                                               HorizontalAlignment="Right" VerticalAlignment="Center"
+                                               Margin="0,0,12,0" IsHitTestVisible="False"/>
+                                    <ToggleButton Focusable="False" IsChecked="{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}"
+                                                  Background="Transparent" BorderThickness="0" Opacity="0"/>
+                                </Grid>
+                            </Border>
+                            <Popup x:Name="Popup" Placement="Bottom"
+                                   IsOpen="{TemplateBinding IsDropDownOpen}"
+                                   AllowsTransparency="True" Focusable="False"
+                                   PopupAnimation="Slide">
+                                <Border x:Name="DropDownBorder"
+                                        Background="{TemplateBinding Background}"
+                                        CornerRadius="8"
+                                        MinWidth="{TemplateBinding ActualWidth}"
+                                        MaxHeight="{TemplateBinding MaxDropDownHeight}">
+                                    <ScrollViewer>
+                                        <ItemsPresenter/>
+                                    </ScrollViewer>
+                                </Border>
+                            </Popup>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="ItemContainerStyle">
+                <Setter.Value>
+                    <Style TargetType="ComboBoxItem">
+                        <Setter Property="Padding" Value="12,8"/>
+                        <Setter Property="Background" Value="Transparent"/>
+                        <Setter Property="Cursor" Value="Hand"/>
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="ComboBoxItem">
+                                    <Border Background="{TemplateBinding Background}"
+                                            CornerRadius="6" Padding="{TemplateBinding Padding}">
+                                        <ContentPresenter TextBlock.Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ComboBox}}"/>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter Property="Background" Value="{DynamicResource ComboHover}"/>
+                                        </Trigger>
+                                        <Trigger Property="IsSelected" Value="True">
+                                            <Setter Property="Background" Value="{DynamicResource ComboSelected}"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                    </Style>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="InjectButton" TargetType="Button">
+            <Setter Property="Background" Value="{DynamicResource PanelBackground}"/>
+            <Setter Property="Foreground" Value="{DynamicResource PrimaryText}"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="FontSize" Value="16"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" CornerRadius="10">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Opacity" Value="0.85"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter Property="Opacity" Value="0.65"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <Border x:Name="RootBorder" Background="{DynamicResource RootBackground}" CornerRadius="0">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="44"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <!-- Title bar -->
+            <Grid Grid.Row="0" Margin="16,0,8,0" Background="Transparent"
+                  MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock x:Name="TitleText" Grid.Column="0" Text="Fluent Injector" FontSize="14" FontWeight="SemiBold"
+                           Foreground="{DynamicResource PrimaryText}" VerticalAlignment="Center"/>
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button Content="&#x2500;" Width="40" Height="40" FontSize="14" Background="Transparent"
+                            Foreground="{DynamicResource MutedText}" BorderThickness="0" Cursor="Hand"
+                            Click="MinimizeButton_Click">
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <Border Background="{TemplateBinding Background}" CornerRadius="6">
+                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter Property="Background" Value="{DynamicResource HoverBackground}"/>
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Button.Template>
+                    </Button>
+                    <Button Content="&#x2715;" Width="40" Height="40" FontSize="13" Background="Transparent"
+                            Foreground="{DynamicResource MutedText}" BorderThickness="0" Cursor="Hand"
+                            Click="CloseButton_Click">
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <Border Background="{TemplateBinding Background}" CornerRadius="6">
+                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter Property="Background" Value="{DynamicResource CloseHoverBackground}"/>
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Button.Template>
+                    </Button>
+                </StackPanel>
+            </Grid>
+
+            <!-- Main content -->
+            <Grid Grid.Row="1" Margin="16,0,16,8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="16"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- LEFT: Process list -->
+                <Border Grid.Column="0" x:Name="ProcessListPanel"
+                        Background="{DynamicResource PanelBackground}" CornerRadius="12" Padding="14">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="10"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="8"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+                        <TextBlock Grid.Row="0" Text="Select Process" FontSize="14" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource PrimaryText}"/>
+                        <Border Grid.Row="2" x:Name="SearchBoxBorder"
+                                Background="{DynamicResource HoverBackground}" CornerRadius="8" Height="36">
+                            <Grid>
+                                <TextBox x:Name="SearchBox"
+                                         Background="Transparent"
+                                         Foreground="{DynamicResource PrimaryText}"
+                                         CaretBrush="{DynamicResource PrimaryText}"
+                                         BorderThickness="0"
+                                         Padding="12,8"
+                                         FontSize="13"
+                                         VerticalContentAlignment="Center"
+                                         TextChanged="SearchBox_TextChanged"/>
+                                <TextBlock Text="Search..."
+                                           Foreground="{DynamicResource MutedText}"
+                                           FontSize="13"
+                                           VerticalAlignment="Center"
+                                           Margin="14,0,0,0"
+                                           IsHitTestVisible="False">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Text, ElementName=SearchBox}" Value="">
+                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </Grid>
+                        </Border>
+                        <ListBox Grid.Row="4" x:Name="ProcessListBox"
+                                 Background="Transparent" BorderThickness="0"
+                                 Foreground="{DynamicResource PrimaryText}"
+                                 ItemContainerStyle="{StaticResource ProcessListItem}"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                 SelectionChanged="ProcessListBox_SelectionChanged">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <Image Grid.Column="0" Source="{Binding ProcessIcon}" Width="16" Height="16"
+                                               VerticalAlignment="Center" Margin="0,0,8,0"
+                                               RenderOptions.BitmapScalingMode="HighQuality">
+                                            <Image.Style>
+                                                <Style TargetType="Image">
+                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding ProcessIcon}" Value="{x:Null}">
+                                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Image.Style>
+                                        </Image>
+                                        <TextBlock Grid.Column="0" Text="&#x25AA;" FontSize="18"
+                                                   Foreground="{DynamicResource MutedText}"
+                                                   VerticalAlignment="Center" Margin="0,0,8,0">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding ProcessIcon}" Value="{x:Null}">
+                                                            <Setter Property="Visibility" Value="Visible"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                        <TextBlock Grid.Column="1" Text="{Binding DisplayName}" FontSize="13"
+                                                   VerticalAlignment="Center"/>
+                                    </Grid>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </Grid>
+                </Border>
+
+                <!-- RIGHT -->
+                <Grid Grid.Column="2">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="12"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="12"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="12"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- DLL Drop Zone -->
+                    <Border Grid.Row="0" x:Name="DropZoneBorder"
+                            Background="{DynamicResource PanelBackground}" CornerRadius="12"
+                            Height="110"
+                            AllowDrop="True" Drop="DropZone_Drop" DragOver="DropZone_DragOver"
+                            DragLeave="DropZone_DragLeave" MouseLeftButtonUp="DropZone_Click" Cursor="Hand">
+                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <TextBlock x:Name="DropZonePrimaryText" Text="Drop .dll files here"
+                                       FontSize="17" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource PrimaryText}"
+                                       HorizontalAlignment="Center"/>
+                            <TextBlock x:Name="DropZoneSecondaryText" Text="or click to browse"
+                                       FontSize="11" Foreground="{DynamicResource PrimaryText}"
+                                       HorizontalAlignment="Center" Margin="0,4,0,0" Opacity="0.6"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Selected DLLs -->
+                    <Border Grid.Row="2" x:Name="DllListPanel"
+                            Background="{DynamicResource PanelBackground}" CornerRadius="12" Padding="14,10">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="8"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            <TextBlock Grid.Row="0" Text="Selected DLLs" FontSize="13" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource PrimaryText}"/>
+                            <ItemsControl Grid.Row="2" x:Name="DllListControl"
+                                          Foreground="{DynamicResource PrimaryText}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid Margin="0,3">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="8"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Grid.Column="0" Text="&#x1F4C4;" FontSize="13" VerticalAlignment="Center"/>
+                                            <TextBlock Grid.Column="2" Text="{Binding FileName}" FontSize="12"
+                                                       VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                            <Button Grid.Column="3" Content="&#x2715;" FontSize="11"
+                                                    Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                    Background="Transparent" BorderThickness="0" Cursor="Hand"
+                                                    Tag="{Binding FullPath}" Click="RemoveDll_Click" Padding="4,0"/>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </Grid>
+                    </Border>
+
+                    <!-- Theme Chooser -->
+                    <Border Grid.Row="4" x:Name="ThemePanel"
+                            Background="{DynamicResource PanelBackground}" CornerRadius="12" Padding="14,10">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Theme" FontSize="13" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource PrimaryText}"
+                                       VerticalAlignment="Center" Margin="0,0,12,0"/>
+                            <ComboBox Grid.Column="1" x:Name="ThemeComboBox"
+                                      Height="32" FontSize="13"
+                                      Style="{StaticResource FlatComboBox}"
+                                      SelectionChanged="ThemeComboBox_SelectionChanged">
+                                <ComboBoxItem Content="Dark"     Tag="Dark"/>
+                                <ComboBoxItem Content="Darker"   Tag="Darker"/>
+                                <ComboBoxItem Content="Light"    Tag="Light"/>
+                            </ComboBox>
+                        </Grid>
+                    </Border>
+
+                    <!-- Inject Button -->
+                    <Button Grid.Row="6" x:Name="InjectBtn" Style="{StaticResource InjectButton}"
+                            Height="50" Click="InjectButton_Click" VerticalAlignment="Bottom">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock x:Name="InjectSpinner" Text="&#x27F3; " FontSize="16"
+                                       Foreground="{DynamicResource PrimaryText}"
+                                       VerticalAlignment="Center" Visibility="Collapsed"/>
+                            <TextBlock Text="Inject" FontSize="16" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource PrimaryText}"
+                                       VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                </Grid>
+            </Grid>
+
+            <!-- Status bar -->
+            <Border Grid.Row="2" Background="Transparent" Padding="20,6">
+                <TextBlock x:Name="StatusTextBlock" Text="Status: Ready" FontSize="12"
+                           Foreground="{DynamicResource StatusOkText}" VerticalAlignment="Center"/>
+            </Border>
+        </Grid>
+    </Border>
+</Window>

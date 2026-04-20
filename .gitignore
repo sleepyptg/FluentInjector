@@ -1,0 +1,33 @@
+# Build output
+bin/
+obj/
+
+# IDE
+.vs/
+.vscode/
+.idea/
+.kiro/
+
+# User-specific
+*.user
+*.suo
+*.rsuser
+*.userosscache
+
+# Publish output
+publish/
+
+# NuGet
+*.nupkg
+*.snupkg
+project.nuget.cache
+
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Logs & temp
+*.log
+*.tmp
+*.cache
