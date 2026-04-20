@@ -539,10 +539,8 @@
                                     </Border>
                                     <ControlTemplate.Triggers>
                                         <Trigger Property="IsChecked" Value="True">
-                                            <Setter TargetName="Dot" Property="Stroke" Value="{DynamicResource AccentBrush}"/>
-                                            <Setter TargetName="Dot" Property="Fill" Value="{DynamicResource AccentBrush}"/>
-                                            <Setter TargetName="Dot" Property="Opacity" Value="1"/>
-                                            <Setter TargetName="Label" Property="Foreground" Value="{DynamicResource PrimaryText}"/>
+                                            <Setter TargetName="ZapIcon" Property="Opacity" Value="1"/>
+                                            <Setter TargetName="Label" Property="Foreground" Value="{DynamicResource AccentBrush}"/>
                                         </Trigger>
                                         <Trigger Property="IsMouseOver" Value="True">
                                             <Setter TargetName="Bg" Property="Opacity" Value="0.85"/>
