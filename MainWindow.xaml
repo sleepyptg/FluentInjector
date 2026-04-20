@@ -462,6 +462,7 @@
                                       Height="32" FontSize="13"
                                       Style="{StaticResource FlatComboBox}"
                                       SelectionChanged="ThemeComboBox_SelectionChanged">
+                                <ComboBoxItem Content="Auto"     Tag="Auto"/>
                                 <ComboBoxItem Content="Dark"     Tag="Dark"/>
                                 <ComboBoxItem Content="Darker"   Tag="Darker"/>
                                 <ComboBoxItem Content="Light"    Tag="Light"/>
@@ -519,28 +520,21 @@
                                     <Border x:Name="Bg"
                                             Background="{DynamicResource PanelBackground}"
                                             CornerRadius="10">
-                                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
-                                            <!-- Lucide zap icon — Path named directly in template scope for trigger targeting -->
-                                            <Viewbox x:Name="ZapIcon" Width="14" Height="14" HorizontalAlignment="Center" Margin="0,0,0,3" Opacity="0.4">
-                                                <Canvas Width="24" Height="24">
-                                                    <Path x:Name="Dot"
-                                                          Stroke="{DynamicResource MutedText}"
-                                                          StrokeThickness="2"
-                                                          StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
-                                                          Fill="Transparent"
-                                                          Data="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/>
-                                                </Canvas>
-                                            </Viewbox>
-                                            <TextBlock x:Name="Label" Text="Auto"
-                                                       FontSize="9" FontWeight="SemiBold"
-                                                       Foreground="{DynamicResource MutedText}"
-                                                       HorizontalAlignment="Center"/>
-                                        </StackPanel>
+                                        <Viewbox Width="22" Height="22" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                            <Canvas Width="24" Height="24">
+                                                <Path x:Name="ZapPath"
+                                                      Stroke="{DynamicResource MutedText}"
+                                                      StrokeThickness="2"
+                                                      StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                                      Fill="{DynamicResource MutedText}"
+                                                      Data="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/>
+                                            </Canvas>
+                                        </Viewbox>
                                     </Border>
                                     <ControlTemplate.Triggers>
                                         <Trigger Property="IsChecked" Value="True">
-                                            <Setter TargetName="ZapIcon" Property="Opacity" Value="1"/>
-                                            <Setter TargetName="Label" Property="Foreground" Value="{DynamicResource AccentBrush}"/>
+                                            <Setter TargetName="ZapPath" Property="Stroke" Value="{DynamicResource AccentBrush}"/>
+                                            <Setter TargetName="ZapPath" Property="Fill" Value="{DynamicResource AccentBrush}"/>
                                         </Trigger>
                                         <Trigger Property="IsMouseOver" Value="True">
                                             <Setter TargetName="Bg" Property="Opacity" Value="0.85"/>

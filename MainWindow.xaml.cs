@@ -26,7 +26,7 @@ namespace DllInjector
         private Timer? _saveDebounceTimer;
         private readonly string _configPath;
         private string _lastSelectedProcessName = "";
-        private bool _autoInjectPending = false;
+        private volatile bool _autoInjectPending = false;
 
         // Icon cache: exe path → ImageSource (null = no icon available)
         private readonly ConcurrentDictionary<string, ImageSource?> _iconCache = new(StringComparer.OrdinalIgnoreCase);
@@ -44,6 +44,7 @@ namespace DllInjector
             {
                 _refreshTimer?.Dispose();
                 _saveDebounceTimer?.Dispose();
+                Microsoft.Win32.SystemEvents.UserPreferenceChanged -= OnUserPreferenceChanged;
             };
             DllListControl.ItemsSource = _selectedDlls;
             _selectedDlls.CollectionChanged += (_, _) => ScheduleSave();
@@ -54,7 +55,7 @@ namespace DllInjector
             ApplyAcrylicBlur();
             // Detach handler so setting default index doesn't overwrite saved config
             ThemeComboBox.SelectionChanged -= ThemeComboBox_SelectionChanged;
-            ThemeComboBox.SelectedIndex = 0;
+            ThemeComboBox.SelectedIndex = 0; // Auto
             ThemeComboBox.SelectionChanged += ThemeComboBox_SelectionChanged;
             LoadConfig();
             // Apply whatever theme is now selected (restored from config or default)
@@ -407,11 +408,11 @@ namespace DllInjector
                 SetStatus($"Status: Auto Inject — {string.Join("  |  ", results)}", allOk);
                 await Task.Delay(2500);
 
-                // Re-arm so the next process launch triggers injection again
+                // Re-arm only after the process exits so we don't inject again into the same instance
                 if (AutoInjectCheckBox.IsChecked == true)
                 {
-                    _autoInjectPending = true;
-                    SetStatus($"Status: Auto Inject armed — waiting for {_lastSelectedProcessName}", true);
+                    SetStatus($"Status: Auto Inject — waiting for {_lastSelectedProcessName} to restart", true);
+                    _ = WaitForProcessExitThenRearmAsync(target.Id);
                 }
             }
             catch (Exception ex)
@@ -422,6 +423,28 @@ namespace DllInjector
             {
                 InjectSpinner.Visibility = Visibility.Collapsed;
                 InjectBtn.IsEnabled = true;
+            }
+        }
+
+        private async Task WaitForProcessExitThenRearmAsync(int processId)
+        {
+            try
+            {
+                var p = Process.GetProcessById(processId);
+                await Task.Run(() =>
+                {
+                    try { p.WaitForExit(); }
+                    catch { /* process already gone */ }
+                });
+            }
+            catch { /* process already gone — treat as exited */ }
+
+            // Only re-arm if the checkbox is still on
+            if (AutoInjectCheckBox.IsChecked == true)
+            {
+                _autoInjectPending = true;
+                Dispatcher.Invoke(() =>
+                    SetStatus($"Status: Auto Inject armed — waiting for {_lastSelectedProcessName}", true));
             }
         }
 
@@ -578,12 +601,45 @@ namespace DllInjector
         private void ThemeComboBox_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
         {
             if (ThemeComboBox.SelectedItem is not System.Windows.Controls.ComboBoxItem item) return;
-            ApplyTheme(item.Tag?.ToString() ?? "Dark");
+            var tag = item.Tag?.ToString() ?? "Dark";
+            if (tag == "Auto")
+            {
+                // Subscribe to system theme changes
+                Microsoft.Win32.SystemEvents.UserPreferenceChanged -= OnUserPreferenceChanged;
+                Microsoft.Win32.SystemEvents.UserPreferenceChanged += OnUserPreferenceChanged;
+                ApplyTheme("Auto");
+            }
+            else
+            {
+                Microsoft.Win32.SystemEvents.UserPreferenceChanged -= OnUserPreferenceChanged;
+                ApplyTheme(tag);
+            }
             ScheduleSave();
+        }
+
+        private void OnUserPreferenceChanged(object sender, Microsoft.Win32.UserPreferenceChangedEventArgs e)
+        {
+            if (e.Category == Microsoft.Win32.UserPreferenceCategory.General)
+                Dispatcher.Invoke(() => ApplyTheme("Auto"));
+        }
+
+        private static bool IsSystemDarkMode()
+        {
+            try
+            {
+                var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(
+                    @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
+                return key?.GetValue("AppsUseLightTheme") is int i && i == 0;
+            }
+            catch { return true; }
         }
 
         private void ApplyTheme(string theme)
         {
+            // Resolve "Auto" to the actual system theme
+            if (theme == "Auto")
+                theme = IsSystemDarkMode() ? "Dark" : "Light";
+
             switch (theme)
             {
                 // rootBg, panelBg, text, mutedText, statusOk, hover, selection, inactiveSel, comboHover, comboSel, accent
@@ -599,7 +655,6 @@ namespace DllInjector
                     SetThemeColors("#88C8C8C8", "#55FFFFFF", "#1A1A2E", "#666666", "#444444",
                                    "#18000000", "#207B68EE", "#107B68EE", "#15000000", "#30000000", "#7B68EE");
                     break;
-
             }
         }
 
