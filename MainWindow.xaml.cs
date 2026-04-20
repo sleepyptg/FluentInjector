@@ -27,11 +27,10 @@ namespace DllInjector
         private readonly string _configPath;
         private string _lastSelectedProcessName = "";
         private volatile bool _autoInjectPending = false;
+        private bool _lastStatusOk = true;
+        private bool _suppressSelectionClear = false;
 
-        // Icon cache: exe path → ImageSource (null = no icon available)
         private readonly ConcurrentDictionary<string, ImageSource?> _iconCache = new(StringComparer.OrdinalIgnoreCase);
-
-        // Status color for the "ok" (non-error) state is managed via Application.Current.Resources["StatusOkText"]
 
         public MainWindow()
         {
@@ -53,12 +52,10 @@ namespace DllInjector
         private void MainWindow_Loaded(object sender, RoutedEventArgs e)
         {
             ApplyAcrylicBlur();
-            // Detach handler so setting default index doesn't overwrite saved config
             ThemeComboBox.SelectionChanged -= ThemeComboBox_SelectionChanged;
-            ThemeComboBox.SelectedIndex = 0; // Auto
+            ThemeComboBox.SelectedIndex = 0;
             ThemeComboBox.SelectionChanged += ThemeComboBox_SelectionChanged;
             LoadConfig();
-            // Apply whatever theme is now selected (restored from config or default)
             if (ThemeComboBox.SelectedItem is System.Windows.Controls.ComboBoxItem item)
                 ApplyTheme(item.Tag?.ToString() ?? "Dark");
             Task.Run(LoadProcesses);
@@ -77,7 +74,6 @@ namespace DllInjector
                 {
                     try
                     {
-                        // Skip processes without a visible window
                         if (string.IsNullOrEmpty(p.MainWindowTitle)) continue;
                         processes.Add(new ProcessItem
                         {
@@ -86,9 +82,10 @@ namespace DllInjector
                             ProcessIcon = GetProcessIconCached(p)
                         });
                     }
-                    catch
+                    catch { }
+                    finally
                     {
-                        // Process exited between snapshot and property access — skip it
+                        p.Dispose();
                     }
                 }
 
@@ -103,12 +100,9 @@ namespace DllInjector
                     {
                         _allProcesses = processes;
 
-                        // Preserve name across ItemsSource reassignment — ApplySearchFilter
-                        // clears SelectedItem which fires SelectionChanged and wipes _lastSelectedProcessName
-                        var savedName = _lastSelectedProcessName;
+                        _suppressSelectionClear = true;
                         ApplySearchFilter();
-                        if (string.IsNullOrEmpty(_lastSelectedProcessName))
-                            _lastSelectedProcessName = savedName;
+                        _suppressSelectionClear = false;
 
                         if (currentId.HasValue)
                         {
@@ -125,7 +119,6 @@ namespace DllInjector
                             }
                         }
 
-                        // Auto-select if saved process name appears in the new list
                         if (ProcessListBox.SelectedItem == null && !string.IsNullOrEmpty(_lastSelectedProcessName))
                         {
                             var match = _allProcesses.FirstOrDefault(p => p.DisplayName == _lastSelectedProcessName);
@@ -134,7 +127,6 @@ namespace DllInjector
                         }
                     }
 
-                    // Auto Inject: check every tick — not gated by list change
                     if (_autoInjectPending && ProcessListBox.SelectedItem is ProcessItem autoTarget)
                     {
                         _autoInjectPending = false;
@@ -155,7 +147,6 @@ namespace DllInjector
                 string? path = process.MainModule?.FileName;
                 if (string.IsNullOrEmpty(path)) return null;
 
-                // Return cached result (including null for "no icon") without hitting disk again
                 if (_iconCache.TryGetValue(path, out var cached))
                     return cached;
 
@@ -200,6 +191,76 @@ namespace DllInjector
             ApplySearchFilter();
         }
 
+        // ── Custom process / list toggle ───────────────────────────────────────
+
+        private bool _processListVisible = true;
+
+        private void ToggleProcessList_Click(object sender, RoutedEventArgs e)
+        {
+            _processListVisible = !_processListVisible;
+            ProcessListBox.Visibility = _processListVisible ? Visibility.Visible : Visibility.Collapsed;
+
+            // Swap eye / eye-off icon to reflect current state
+            var btn = (System.Windows.Controls.Button)sender;
+            var eyeOn  = (System.Windows.Controls.Viewbox)btn.Template.FindName("EyeIcon",    btn);
+            var eyeOff = (System.Windows.Controls.Viewbox)btn.Template.FindName("EyeOffIcon", btn);
+            if (eyeOn != null)  eyeOn.Visibility  = _processListVisible ? Visibility.Visible   : Visibility.Collapsed;
+            if (eyeOff != null) eyeOff.Visibility = _processListVisible ? Visibility.Collapsed : Visibility.Visible;
+
+            ScheduleSave();
+        }
+
+        private void AddCustomProcess_Click(object sender, RoutedEventArgs e)
+        {
+            bool show = CustomProcessRow.Visibility != Visibility.Visible;
+            CustomProcessRow.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+            if (show)
+            {
+                CustomProcessBox.Clear();
+                CustomProcessBox.Focus();
+            }
+        }
+
+        private void ConfirmCustomProcess_Click(object sender, RoutedEventArgs e)
+        {
+            ApplyCustomProcess();
+        }
+
+        private void CustomProcessBox_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Enter)
+                ApplyCustomProcess();
+            else if (e.Key == Key.Escape)
+                CustomProcessRow.Visibility = Visibility.Collapsed;
+        }
+
+        private void ApplyCustomProcess()
+        {
+            var name = CustomProcessBox.Text.Trim();
+            if (string.IsNullOrEmpty(name)) return;
+
+            if (!name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+                name += ".exe";
+
+            var match = _allProcesses.FirstOrDefault(
+                p => p.DisplayName.Equals(name, StringComparison.OrdinalIgnoreCase));
+
+            if (match != null)
+            {
+                ProcessListBox.SelectedItem = match;
+                ProcessListBox.ScrollIntoView(match);
+                SetStatus($"Status: Selected {match.DisplayName} (PID {match.Id})", true);
+            }
+            else
+            {
+                _lastSelectedProcessName = name;
+                SetStatus($"Status: Waiting for {name} (not running)", true);
+                ScheduleSave();
+            }
+
+            CustomProcessRow.Visibility = Visibility.Collapsed;
+        }
+
         private void ProcessListBox_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
         {
             if (ProcessListBox.SelectedItem is ProcessItem p)
@@ -208,9 +269,8 @@ namespace DllInjector
                 SetStatus($"Status: Selected {p.DisplayName} (PID {p.Id})", true);
                 ScheduleSave();
             }
-            else if (e.RemovedItems.Count > 0)
+            else if (e.RemovedItems.Count > 0 && !_suppressSelectionClear)
             {
-                // User manually deselected — clear saved name so we don't show misleading "waiting" messages
                 _lastSelectedProcessName = "";
             }
         }
@@ -316,6 +376,7 @@ namespace DllInjector
 
         private async void InjectButton_Click(object sender, RoutedEventArgs e)
         {
+            InjectBtn.IsEnabled = false;
             try
             {
                 if (ProcessListBox.SelectedItem is not ProcessItem target)
@@ -333,7 +394,6 @@ namespace DllInjector
                 }
 
                 var dllSnapshot = _selectedDlls.ToList();
-                InjectBtn.IsEnabled = false;
                 InjectSpinner.Visibility = Visibility.Visible;
                 SetStatus("Status: Preparing injection...", true);
 
@@ -351,7 +411,6 @@ namespace DllInjector
                 bool allOk = results.All(r => r.EndsWith("OK"));
                 SetStatus($"Status: {string.Join("  |  ", results)}", allOk);
 
-                // Hold the result message for at least 2.5s so the user can read it
                 await Task.Delay(2500);
             }
             catch (Exception ex)
@@ -373,7 +432,7 @@ namespace DllInjector
             // Verify the process is still alive before attempting injection
             try
             {
-                var p = Process.GetProcessById(target.Id);
+                using var p = Process.GetProcessById(target.Id);
                 if (p.HasExited)
                 {
                     _autoInjectPending = true;
@@ -382,7 +441,6 @@ namespace DllInjector
             }
             catch
             {
-                // Process no longer exists — re-arm and wait for next launch
                 _autoInjectPending = true;
                 return;
             }
@@ -408,7 +466,9 @@ namespace DllInjector
                 SetStatus($"Status: Auto Inject — {string.Join("  |  ", results)}", allOk);
                 await Task.Delay(2500);
 
-                // Re-arm only after the process exits so we don't inject again into the same instance
+                // FIX #5: re-arm regardless of success/failure so auto-inject keeps working
+                // after a failed attempt (e.g. wrong bitness, missing dependency).
+                // Always wait for exit first so we don't inject twice into the same instance.
                 if (AutoInjectCheckBox.IsChecked == true)
                 {
                     SetStatus($"Status: Auto Inject — waiting for {_lastSelectedProcessName} to restart", true);
@@ -418,6 +478,8 @@ namespace DllInjector
             catch (Exception ex)
             {
                 SetStatus($"Status: Auto Inject error — {ex.Message}", false);
+                if (AutoInjectCheckBox.IsChecked == true)
+                    _ = WaitForProcessExitThenRearmAsync(target.Id);
             }
             finally
             {
@@ -430,16 +492,15 @@ namespace DllInjector
         {
             try
             {
-                var p = Process.GetProcessById(processId);
+                using var p = Process.GetProcessById(processId);
                 await Task.Run(() =>
                 {
                     try { p.WaitForExit(); }
-                    catch { /* process already gone */ }
+                    catch { }
                 });
             }
-            catch { /* process already gone — treat as exited */ }
+            catch { }
 
-            // Only re-arm if the checkbox is still on
             if (AutoInjectCheckBox.IsChecked == true)
             {
                 _autoInjectPending = true;
@@ -448,7 +509,6 @@ namespace DllInjector
             }
         }
 
-        // Standard LoadLibraryW injection
         private bool StandardInject(int processId, string dllPath)
         {
             IntPtr hProcess = OpenProcess(
@@ -479,25 +539,22 @@ namespace DllInjector
                     IntPtr hThread = CreateRemoteThread(hProcess, IntPtr.Zero, 0, loadLibW, mem, 0, IntPtr.Zero);
                     if (hThread == IntPtr.Zero) return false;
 
-                    try
-                    {
-                        // WAIT_OBJECT_0 = 0; timeout or failure means injection didn't complete
-                        uint waitResult = WaitForSingleObject(hThread, 5000);
-                        if (waitResult != 0) return false;
-
-                        // Thread exit code = LoadLibraryW return value; 0 means it failed to load
-                        GetExitCodeThread(hThread, out uint exitCode);
-                        return exitCode != 0;
-                    }
-                    finally
+                    uint waitResult = WaitForSingleObject(hThread, 5000);
+                    if (waitResult != 0)
                     {
                         CloseHandle(hThread);
+                        return false;
                     }
-                }
-                finally
-                {
-                    // Always free remote memory — LoadLibraryW has already copied the path internally
+
+                    GetExitCodeThread(hThread, out uint exitCode);
+                    CloseHandle(hThread);
                     VirtualFreeEx(hProcess, mem, 0, AllocationType.Release);
+                    return exitCode != 0;
+                }
+                catch
+                {
+                    VirtualFreeEx(hProcess, mem, 0, AllocationType.Release);
+                    throw;
                 }
             }
             finally
@@ -508,7 +565,6 @@ namespace DllInjector
 
         // ── Config ─────────────────────────────────────────────────────────────
 
-        // Debounce saves: reset a 300ms timer on each call, only write when it fires
         private void ScheduleSave()
         {
             _saveDebounceTimer?.Dispose();
@@ -522,14 +578,16 @@ namespace DllInjector
                 if (ThemeComboBox == null || ProcessListBox == null) return;
 
                 var selectedTheme = (ThemeComboBox.SelectedItem as System.Windows.Controls.ComboBoxItem)?.Tag?.ToString() ?? "Dark";
+                var selectedProcess = ProcessListBox.SelectedItem as ProcessItem;
                 var config = new
                 {
-                    ProcessName = (ProcessListBox.SelectedItem as ProcessItem)?.DisplayName ?? "",
-                    ProcessId   = (ProcessListBox.SelectedItem as ProcessItem)?.Id ?? 0,
-                    DllPaths    = _selectedDlls.Select(d => d.FullPath).ToList(),
-                    Theme       = selectedTheme,
-                    AutoInject  = AutoInjectCheckBox.IsChecked == true,
-                    SavedAt     = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")
+                    ProcessName         = selectedProcess?.DisplayName ?? _lastSelectedProcessName,
+                    ProcessId           = selectedProcess?.Id ?? 0,
+                    DllPaths            = _selectedDlls.Select(d => d.FullPath).ToList(),
+                    Theme               = selectedTheme,
+                    AutoInject          = AutoInjectCheckBox.IsChecked == true,
+                    ProcessListVisible  = _processListVisible,
+                    SavedAt             = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")
                 };
 
                 string json = System.Text.Json.JsonSerializer.Serialize(config,
@@ -566,7 +624,6 @@ namespace DllInjector
                     if (item != null) ThemeComboBox.SelectedItem = item;
                 }
 
-                // Just set the name — LoadProcesses will auto-select when the list populates
                 if (config.TryGetProperty("ProcessName", out var procName))
                 {
                     string targetProcess = procName.GetString() ?? "";
@@ -582,6 +639,20 @@ namespace DllInjector
                     AutoInjectCheckBox.IsChecked = true;
                     _autoInjectPending = true;
                 }
+
+                if (config.TryGetProperty("ProcessListVisible", out var listVisible))
+                {
+                    _processListVisible = listVisible.GetBoolean();
+                    ProcessListBox.Visibility = _processListVisible ? Visibility.Visible : Visibility.Collapsed;
+
+                    Dispatcher.InvokeAsync(() =>
+                    {
+                        var eyeOn  = (System.Windows.Controls.Viewbox)ToggleListBtn.Template.FindName("EyeIcon",    ToggleListBtn);
+                        var eyeOff = (System.Windows.Controls.Viewbox)ToggleListBtn.Template.FindName("EyeOffIcon", ToggleListBtn);
+                        if (eyeOn  != null) eyeOn.Visibility  = _processListVisible ? Visibility.Visible   : Visibility.Collapsed;
+                        if (eyeOff != null) eyeOff.Visibility = _processListVisible ? Visibility.Collapsed : Visibility.Visible;
+                    }, System.Windows.Threading.DispatcherPriority.Loaded);
+                }
             }
             catch { /* Silent fail on load */ }
         }
@@ -590,6 +661,7 @@ namespace DllInjector
 
         private void SetStatus(string message, bool ok)
         {
+            _lastStatusOk = ok;
             StatusTextBlock.Text = message;
             StatusTextBlock.Foreground = ok
                 ? (SolidColorBrush)Application.Current.Resources["StatusOkText"]
@@ -627,7 +699,7 @@ namespace DllInjector
         {
             try
             {
-                var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(
+                using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(
                     @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
                 return key?.GetValue("AppsUseLightTheme") is int i && i == 0;
             }
@@ -636,13 +708,11 @@ namespace DllInjector
 
         private void ApplyTheme(string theme)
         {
-            // Resolve "Auto" to the actual system theme
             if (theme == "Auto")
                 theme = IsSystemDarkMode() ? "Dark" : "Light";
 
             switch (theme)
             {
-                // rootBg, panelBg, text, mutedText, statusOk, hover, selection, inactiveSel, comboHover, comboSel, accent
                 case "Dark":
                     SetThemeColors("#AA1E1E1E", "#551E1E1E", "#F0F0F0", "#AAAAAA", "#AAAAAA",
                                    "#15000000", "#207B68EE", "#107B68EE", "#25000000", "#45000000", "#7B68EE");
@@ -688,10 +758,7 @@ namespace DllInjector
             ProcessListBox.Resources[SystemColors.InactiveSelectionHighlightBrushKey]     = new SolidColorBrush(inactColor);
             ProcessListBox.Resources[SystemColors.InactiveSelectionHighlightTextBrushKey] = new SolidColorBrush(textColor);
 
-            // Re-apply status to pick up the new StatusOkText brush
-            bool isOk = StatusTextBlock.Foreground is SolidColorBrush sb
-                && sb.Color != (Color)ColorConverter.ConvertFromString("#D32F2F");
-            SetStatus(StatusTextBlock.Text, isOk);
+            SetStatus(StatusTextBlock.Text, _lastStatusOk);
         }
 
         // ── Acrylic blur ───────────────────────────────────────────────────────
@@ -701,13 +768,9 @@ namespace DllInjector
             var helper = new WindowInteropHelper(this);
             if (helper.Handle == IntPtr.Zero) return;
 
-            // DWMWA_SYSTEMBACKDROP_TYPE = 38, requires Windows 11 22H2 (build 22621+)
-            // Values: 0=Auto, 1=None, 2=Mica, 3=Acrylic, 4=Tabbed
             int backdropType = 3;
             DwmSetWindowAttribute(helper.Handle, 38, ref backdropType, Marshal.SizeOf<int>());
 
-            // DWMWA_WINDOW_CORNER_PREFERENCE = 33, requires Windows 11
-            // Values: 0=Default, 1=DoNotRound, 2=Round, 3=RoundSmall
             int cornerPref = 2;
             DwmSetWindowAttribute(helper.Handle, 33, ref cornerPref, Marshal.SizeOf<int>());
         }
