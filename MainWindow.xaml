@@ -140,10 +140,17 @@
                                                       TextBlock.Foreground="{TemplateBinding Foreground}"
                                                       Margin="12,0,32,0"
                                                       VerticalAlignment="Center"/>
-                                    <TextBlock Text="&#x25BE;" FontSize="12"
-                                               Foreground="{TemplateBinding Foreground}"
-                                               HorizontalAlignment="Right" VerticalAlignment="Center"
-                                               Margin="0,0,12,0" IsHitTestVisible="False"/>
+                                    <Viewbox Width="14" Height="14"
+                                             HorizontalAlignment="Right" VerticalAlignment="Center"
+                                             Margin="0,0,12,0" IsHitTestVisible="False">
+                                        <Canvas Width="24" Height="24">
+                                            <Path Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ComboBox}}"
+                                                  StrokeThickness="2.5"
+                                                  StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                                  Fill="Transparent"
+                                                  Data="M6 9 L12 15 L18 9"/>
+                                        </Canvas>
+                                    </Viewbox>
                                     <ToggleButton Focusable="False" IsChecked="{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}"
                                                   Background="Transparent" BorderThickness="0" Opacity="0"/>
                                 </Grid>
